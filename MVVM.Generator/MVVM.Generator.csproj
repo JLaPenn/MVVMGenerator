@@ -14,7 +14,7 @@
 	</PropertyGroup>
 	<PropertyGroup>
 		<PackageId>MVVM.Generator</PackageId>
-		<Version>4.7.12</Version>
+		<Version>4.7.13</Version>
 		<PackageProjectUrl>https://github.com/PassivePicasso/MVVMGenerator</PackageProjectUrl>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Title>MVVM.Generator</Title>
@@ -33,6 +33,7 @@
 	<ItemGroup>
 		<None Include="$(OutputPath)\$(AssemblyName).*" Pack="True" PackagePath="analyzers/dotnet/cs" Visible="false" />
 		<None Include="$(OutputPath)\$(AssemblyName).*" Pack="True" PackagePath="lib/netstandard2.0" Visible="false" />
+		<None Include="build\MVVM.Generator.props" Pack="True" PackagePath="build\;buildTransitive\" />
 	</ItemGroup>
 
 	<ItemGroup>
