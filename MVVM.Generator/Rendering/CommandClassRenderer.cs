@@ -112,6 +112,11 @@ internal static class CommandClassRenderer
             {
 {{methodCall}}
             }
+
+            public void NotifyCanExecuteChanged()
+            {
+                CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+            }
 {{disposeMethod}}
         }
 {{pragmaRestore}}
@@ -128,7 +133,7 @@ internal static class CommandClassRenderer
             {
                 if ({{propertyChecks}})
                 {
-                    CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+                    NotifyCanExecuteChanged();
                 }
             }
 """;

@@ -63,6 +63,13 @@ internal static class ClassRenderer
             }
 
             properties.Add(property);
+
+            properties.Add($$"""
+        public void Notify{{command.MethodName}}CommandCanExecuteChanged()
+        {
+            ({{command.FieldName}} as {{command.ClassName}})?.NotifyCanExecuteChanged();
+        }
+""");
         }
 
         foreach (var dependencyProperty in model.DependencyProperties)

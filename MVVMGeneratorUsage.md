@@ -125,6 +125,25 @@ public partial class ViewModel
 }
 ```
 
+### Refreshing Command Availability
+
+The generator automatically refreshes a command when its `CanExecute` member reads an observable property on the view model. When availability depends on external state or on the command parameter, notify the command explicitly:
+
+```csharp
+public partial class ViewModel
+{
+    [AutoCommand(nameof(CanDelete))]
+    public void Delete(Item item) { }
+
+    public bool CanDelete(Item item) => item.CanBeDeleted;
+
+    public void OnItemStateChanged()
+    {
+        NotifyDeleteCommandCanExecuteChanged();
+    }
+}
+```
+
 ## WPF Dependency Properties
 ```csharp
 public partial class CustomControl : Control
