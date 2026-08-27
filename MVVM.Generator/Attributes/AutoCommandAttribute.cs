@@ -6,6 +6,10 @@ namespace MVVM.Generator.Attributes;
 public class AutoCommandAttribute : Attribute
 {
     public string? CanExecuteMethod { get; }
+    public string[] InvalidatedBy { get; set; } = Array.Empty<string>();
+    public Type[] InvalidatedByEventSources { get; set; } = Array.Empty<Type>();
+    public string[] InvalidatedByEvents { get; set; } = Array.Empty<string>();
+
     public AutoCommandAttribute() { }
     public AutoCommandAttribute(string canExecuteMethod)
     {

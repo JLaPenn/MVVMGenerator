@@ -62,6 +62,14 @@ public static class Descriptors
                 defaultSeverity: DiagnosticSeverity.Error,
                 isEnabledByDefault: true);
 
+            public static readonly DiagnosticDescriptor InvalidInvalidation = new(
+                id: "MGAC004",
+                title: "Invalid command invalidation source",
+                messageFormat: "Command '{0}' has invalid invalidation configuration: {1}",
+                category: Category,
+                defaultSeverity: DiagnosticSeverity.Error,
+                isEnabledByDefault: true);
+
             // Optional CanExecute warning
             public static readonly DiagnosticDescriptor MissingCanExecute = new(
                 id: "MGAC101", // Moved to 100+ series as it's not an error

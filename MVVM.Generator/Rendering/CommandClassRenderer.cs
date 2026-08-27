@@ -15,6 +15,7 @@ internal static class CommandClassRenderer
     {
         string callerSource = command.IsStatic ? command.OwnerTypeName : "_owner";
         bool hasDependencies = command.Dependencies.Length > 0;
+        bool hasEventInvalidations = command.EventInvalidations.Length > 0;
 
         // For async methods, use await; for sync, just call directly
         var awaitPrefix = command.IsAsync ? "await " : "";
@@ -83,6 +84,8 @@ internal static class CommandClassRenderer
 """;
         }
 
+        ctorBody += ExternalEventSubscriptions(command);
+
         var constructor = $$"""
             public {{command.ClassName}}({{(command.IsStatic ? string.Empty : $"{command.OwnerTypeName} owner")}})
             {
@@ -94,8 +97,9 @@ internal static class CommandClassRenderer
         var asyncModifier = command.IsAsync ? "async " : "";
 
         // Remove the pragma warning disable if we're actually using the event
-        var pragmaDisable = hasDependencies ? "" : "#pragma warning disable CS0067 // Event is never used\n";
-        var pragmaRestore = hasDependencies ? "" : "#pragma warning restore CS0067\n";
+        var usesEvent = hasDependencies || hasEventInvalidations;
+        var pragmaDisable = usesEvent ? "" : "#pragma warning disable CS0067 // Event is never used\n";
+        var pragmaRestore = usesEvent ? "" : "#pragma warning restore CS0067\n";
 
         definitions.Add($$"""
 {{pragmaDisable}}        public class {{command.ClassName}} : ICommand
@@ -121,6 +125,31 @@ internal static class CommandClassRenderer
         }
 {{pragmaRestore}}
 """);
+    }
+
+    private static string ExternalEventSubscriptions(CommandModel command)
+    {
+        var subscriptions = new List<string>();
+
+        for (var index = 0; index < command.EventInvalidations.Length; index++)
+        {
+            var invalidation = command.EventInvalidations[index];
+            subscriptions.Add($$"""
+
+                var weakCommand{{index}} = new WeakReference<{{command.ClassName}}>(this);
+                {{invalidation.DelegateTypeName}}? invalidationHandler{{index}} = null;
+                invalidationHandler{{index}} = (_, _) =>
+                {
+                    if (weakCommand{{index}}.TryGetTarget(out var command))
+                        command.NotifyCanExecuteChanged();
+                    else
+                        {{invalidation.SourceTypeName}}.{{invalidation.EventName}} -= invalidationHandler{{index}};
+                };
+                {{invalidation.SourceTypeName}}.{{invalidation.EventName}} += invalidationHandler{{index}};
+""");
+        }
+
+        return string.Concat(subscriptions);
     }
 
     private static string PropertyChangedHandler(EquatableArray<string> dependencies)

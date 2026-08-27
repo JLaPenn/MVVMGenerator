@@ -6,3 +6,4 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 MAACA005 | Usage | Warning | AutoCommandAnalyzer
+MGAC004 | Generator | Error | AutoCommand invalidation configuration

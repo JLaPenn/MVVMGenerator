@@ -127,7 +127,34 @@ public partial class ViewModel
 
 ### Refreshing Command Availability
 
-The generator automatically refreshes a command when its `CanExecute` member reads an observable property on the view model. When availability depends on external state or on the command parameter, notify the command explicitly:
+The generator automatically refreshes a command when its `CanExecute` member reads an observable property on the view model. Add owner properties that cannot be inferred with `InvalidatedBy`:
+
+```csharp
+[AutoCommand(
+    nameof(CanSubmit),
+    InvalidatedBy = new[] { nameof(SessionState) })]
+public void Submit() { }
+```
+
+External static events use paired source and event arrays. Entries at the same index form one subscription:
+
+```csharp
+[AutoCommand(
+    nameof(CanAddItem),
+    InvalidatedByEventSources = new[]
+    {
+        typeof(ItemDataCache),
+        typeof(LoginManager)
+    },
+    InvalidatedByEvents = new[]
+    {
+        nameof(ItemDataCache.CacheUpdated),
+        nameof(LoginManager.LoginChanged)
+    })]
+public void AddItem(Item item) { }
+```
+
+Event sources must be accessible static events using a void delegate with two parameters. Generated subscriptions hold commands weakly. When availability depends on parameter state that has no configured event, notify the command explicitly:
 
 ```csharp
 public partial class ViewModel

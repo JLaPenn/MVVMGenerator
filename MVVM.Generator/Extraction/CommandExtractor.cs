@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 
 using Microsoft.CodeAnalysis;
@@ -34,6 +35,13 @@ internal static class CommandExtractor
             ? DependencyAnalyzer.GetDependencies(canExecuteMember, null)
             : (IReadOnlyList<string>)[];
 
+        var attribute = GetAttribute(methodSymbol);
+        dependencies = dependencies
+            .Concat(GetStringArray(attribute, nameof(AutoCommandAttribute.InvalidatedBy)))
+            .Distinct()
+            .ToArray();
+        var eventInvalidations = ResolveEventInvalidations(attribute);
+
         if (dependencies.Count > 0)
             usings.Add("using System.ComponentModel;");
 
@@ -55,6 +63,7 @@ internal static class CommandExtractor
             CanExecuteName: canExecuteName,
             CanExecuteIsProperty: isProperty,
             Dependencies: EquatableArray.From(dependencies),
+            EventInvalidations: EquatableArray.From(eventInvalidations),
             AdditionalAttributes: EquatableArray.From(additionalAttributes),
             Usings: EquatableArray.From(usings));
     }
@@ -85,6 +94,8 @@ internal static class CommandExtractor
                 $"Return type must be void or Task, found {methodSymbol.ReturnType}."));
             return false;
         }
+
+        if (!ValidateInvalidations(methodSymbol, diagnostics)) return false;
 
         var canExecuteName = CanExecuteResolver.SuppliedName(methodSymbol);
         if (string.IsNullOrEmpty(canExecuteName)) return true;
@@ -189,5 +200,89 @@ internal static class CommandExtractor
     {
         return type.Name == "Task"
             && type.ContainingNamespace?.ToString() == "System.Threading.Tasks";
+    }
+
+    private static AttributeData? GetAttribute(IMethodSymbol methodSymbol) =>
+        methodSymbol.GetAttributes()
+            .FirstOrDefault(attribute => attribute.AttributeClass?.Name == nameof(AutoCommandAttribute));
+
+    private static ImmutableArray<TypedConstant> GetArray(AttributeData? attribute, string name)
+    {
+        if (attribute == null) return ImmutableArray<TypedConstant>.Empty;
+
+        foreach (var argument in attribute.NamedArguments)
+        {
+            if (argument.Key == name && argument.Value.Kind == TypedConstantKind.Array)
+                return argument.Value.Values;
+        }
+
+        return ImmutableArray<TypedConstant>.Empty;
+    }
+
+    private static IEnumerable<string> GetStringArray(AttributeData? attribute, string name) =>
+        GetArray(attribute, name).Select(value => value.Value as string).Where(value => value != null)!;
+
+    private static List<CommandEventInvalidation> ResolveEventInvalidations(AttributeData? attribute)
+    {
+        var sourceTypes = GetArray(attribute, nameof(AutoCommandAttribute.InvalidatedByEventSources));
+        var eventNames = GetStringArray(attribute, nameof(AutoCommandAttribute.InvalidatedByEvents)).ToArray();
+        var invalidations = new List<CommandEventInvalidation>();
+
+        for (var index = 0; index < sourceTypes.Length && index < eventNames.Length; index++)
+        {
+            if (sourceTypes[index].Value is not INamedTypeSymbol sourceType) continue;
+            var eventSymbol = sourceType.GetMembers(eventNames[index]).OfType<IEventSymbol>().FirstOrDefault();
+            if (eventSymbol?.Type is not INamedTypeSymbol delegateType) continue;
+
+            invalidations.Add(new CommandEventInvalidation(
+                sourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                eventSymbol.Name,
+                delegateType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+        }
+
+        return invalidations;
+    }
+
+    private static bool ValidateInvalidations(
+        IMethodSymbol methodSymbol, List<DiagnosticInfo> diagnostics)
+    {
+        var attribute = GetAttribute(methodSymbol);
+        var sourceTypes = GetArray(attribute, nameof(AutoCommandAttribute.InvalidatedByEventSources));
+        var eventNames = GetStringArray(attribute, nameof(AutoCommandAttribute.InvalidatedByEvents)).ToArray();
+
+        if (sourceTypes.Length != eventNames.Length)
+        {
+            diagnostics.Add(DiagnosticInfo.Create(
+                Descriptors.Generator.AutoCommand.InvalidInvalidation, methodSymbol,
+                methodSymbol.Name, "InvalidatedByEventSources and InvalidatedByEvents must have equal lengths."));
+            return false;
+        }
+
+        for (var index = 0; index < sourceTypes.Length; index++)
+        {
+            if (sourceTypes[index].Value is not INamedTypeSymbol sourceType)
+                return AddInvalidationDiagnostic(methodSymbol, diagnostics, "Event source must be a type.");
+
+            var eventSymbol = sourceType.GetMembers(eventNames[index]).OfType<IEventSymbol>().FirstOrDefault();
+            if (eventSymbol == null || !eventSymbol.IsStatic)
+                return AddInvalidationDiagnostic(methodSymbol, diagnostics,
+                    $"'{sourceType.Name}.{eventNames[index]}' must be an accessible static event.");
+
+            var invoke = (eventSymbol.Type as INamedTypeSymbol)?.DelegateInvokeMethod;
+            if (invoke == null || !invoke.ReturnsVoid || invoke.Parameters.Length != 2)
+                return AddInvalidationDiagnostic(methodSymbol, diagnostics,
+                    $"'{sourceType.Name}.{eventNames[index]}' must use a void delegate with two parameters.");
+        }
+
+        return true;
+    }
+
+    private static bool AddInvalidationDiagnostic(
+        IMethodSymbol methodSymbol, List<DiagnosticInfo> diagnostics, string reason)
+    {
+        diagnostics.Add(DiagnosticInfo.Create(
+            Descriptors.Generator.AutoCommand.InvalidInvalidation, methodSymbol,
+            methodSymbol.Name, reason));
+        return false;
     }
 }
