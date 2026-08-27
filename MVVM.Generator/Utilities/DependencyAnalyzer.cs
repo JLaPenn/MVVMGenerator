@@ -5,6 +5,9 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
+using MVVM.Generator.Attributes;
+using MVVM.Generator.Extraction;
+
 namespace MVVM.Generator.Utilities;
 
 /// <summary>
@@ -26,6 +29,7 @@ public static class DependencyAnalyzer
 
         var dependencies = new HashSet<string>();
         var containingType = canExecuteSymbol.ContainingType;
+        var observableMembers = GetObservableMembers(containingType);
 
         // Get the syntax node for analysis
         var syntaxRef = canExecuteSymbol.DeclaringSyntaxReferences.FirstOrDefault();
@@ -45,32 +49,39 @@ public static class DependencyAnalyzer
         {
             var name = identifier.Identifier.Text;
 
-            // Check if it's a field with underscore prefix (backing field pattern)
-            if (name.StartsWith("_"))
+            if (observableMembers.TryGetValue(name, out var propertyName))
             {
-                var propertyName = FieldToPropertyName(name);
-                // Verify the property exists
-                if (containingType.GetMembers(propertyName).OfType<IPropertySymbol>().Any())
-                {
-                    dependencies.Add(propertyName);
-                    if (LogManager.IsEnabled)
-                        LogManager.Log($"{LogPrefix}Found backing field dependency: {name} -> {propertyName}");
-                }
-            }
-
-            // Check if it's a direct property reference
-            var property = containingType.GetMembers(name).OfType<IPropertySymbol>().FirstOrDefault();
-            if (property != null)
-            {
-                dependencies.Add(name);
+                dependencies.Add(propertyName);
                 if (LogManager.IsEnabled)
-                    LogManager.Log($"{LogPrefix}Found property dependency: {name}");
+                    LogManager.Log($"{LogPrefix}Found observable dependency: {name} -> {propertyName}");
             }
         }
 
         if (LogManager.IsEnabled)
             LogManager.Log($"{LogPrefix}Total dependencies for {canExecuteSymbol.Name}: {dependencies.Count}");
         return dependencies.ToList();
+    }
+
+    private static IReadOnlyDictionary<string, string> GetObservableMembers(INamedTypeSymbol containingType)
+    {
+        var members = containingType.GetMembers()
+            .OfType<IPropertySymbol>()
+            .ToDictionary(property => property.Name, property => property.Name);
+
+        foreach (var field in containingType.GetMembers().OfType<IFieldSymbol>())
+        {
+            if (!field.GetAttributes().Any(attribute =>
+                    attribute.AttributeClass?.Name == nameof(AutoNotifyAttribute)))
+            {
+                continue;
+            }
+
+            var propertyName = FieldAttributeReader.GetPropertyName(field);
+            members[field.Name] = propertyName;
+            members[propertyName] = propertyName;
+        }
+
+        return members;
     }
 
     /// <summary>
@@ -106,18 +117,4 @@ public static class DependencyAnalyzer
         return Enumerable.Empty<IdentifierNameSyntax>();
     }
 
-    /// <summary>
-    /// Converts a backing field name to its corresponding property name.
-    /// _isPlaying -> IsPlaying
-    /// _currentFrame -> CurrentFrame
-    /// </summary>
-    private static string FieldToPropertyName(string fieldName)
-    {
-        if (fieldName.StartsWith("_") && fieldName.Length > 1)
-        {
-            // Remove underscore and capitalize first letter
-            return char.ToUpperInvariant(fieldName[1]) + fieldName.Substring(2);
-        }
-        return fieldName;
-    }
 }
