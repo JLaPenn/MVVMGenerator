@@ -38,14 +38,14 @@ internal static class CommandClassRenderer
         {
             methodCall = $$"""
                 if(parameter is not {{parameterType}} typedParameter) return;
-                    {{awaitPrefix}}{{callerSource}}.{{command.MethodName}}(typedParameter);
+                {{awaitPrefix}}{{callerSource}}.{{command.MethodName}}(typedParameter);
 """;
 
             // For parameterized commands, CanExecute must be a method (properties can't take parameters)
             canExecute = !string.IsNullOrEmpty(command.CanExecuteName)
                 ? $$"""
                 if(parameter is not {{parameterType}} typedParameter) return false;
-                    return {{callerSource}}.{{command.CanExecuteName}}(typedParameter);
+                return {{callerSource}}.{{command.CanExecuteName}}(typedParameter);
 """
                 : $"""
                 return parameter is {parameterType};
@@ -101,6 +101,7 @@ internal static class CommandClassRenderer
 {{pragmaDisable}}        public class {{command.ClassName}} : ICommand
         {
             public event EventHandler? CanExecuteChanged;
+            
 {{ownerField}}
 {{constructor}}
             public bool CanExecute(object? parameter)
