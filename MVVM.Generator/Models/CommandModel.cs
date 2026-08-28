@@ -3,7 +3,8 @@
 internal sealed record CommandEventInvalidation(
     string SourceTypeName,
     string EventName,
-    string DelegateTypeName);
+    string DelegateTypeName,
+    int ParameterCount);
 
 /// <summary>
 /// One [AutoCommand] method. Overrides of an already-commanded method still
@@ -21,6 +22,7 @@ internal sealed record CommandModel(
     string CanExecuteName,
     bool CanExecuteIsProperty,
     EquatableArray<string> Dependencies,
+    EquatableArray<string> ParameterDependencies,
     EquatableArray<CommandEventInvalidation> EventInvalidations,
     EquatableArray<string> AdditionalAttributes,
     EquatableArray<string> Usings);

@@ -154,7 +154,9 @@ External static events use paired source and event arrays. Entries at the same i
 public void AddItem(Item item) { }
 ```
 
-Event sources must be accessible static events using a void delegate with two parameters. Generated subscriptions hold commands weakly. When availability depends on parameter state that has no configured event, notify the command explicitly:
+Event sources must be accessible static events using a void delegate without `ref` parameters. Generated subscriptions hold commands weakly.
+
+Properties read directly from an `INotifyPropertyChanged` command parameter are tracked automatically after `CanExecute` receives that object. The command switches subscriptions whenever `CanExecute` receives a different object and refreshes only for the inferred properties:
 
 ```csharp
 public partial class ViewModel
@@ -164,12 +166,10 @@ public partial class ViewModel
 
     public bool CanDelete(Item item) => item.CanBeDeleted;
 
-    public void OnItemStateChanged()
-    {
-        NotifyDeleteCommandCanExecuteChanged();
-    }
 }
 ```
+
+Standard WPF and Avalonia command sources call `CanExecute` when their `CommandParameter` reference changes. `ICommand` cannot observe that source-side assignment itself. When parameter or external state is not observable, configure an external invalidation event or call `NotifyDeleteCommandCanExecuteChanged()` explicitly.
 
 ## WPF Dependency Properties
 ```csharp
@@ -184,6 +184,22 @@ public partial class CustomControl : Control
 ```
 
 ## Usage Notes
+
+### Publishing to a Private Feed
+
+Register the same source name on each development computer, mapped to that computer's feed location:
+
+```powershell
+dotnet nuget add source "<machine-specific-feed-path>" --name "InternalNugetFeed"
+```
+
+Pack and publish the current version with:
+
+```powershell
+dotnet msbuild MVVM.Generator/MVVM.Generator.csproj -t:PublishInternal
+```
+
+The target publishes through the source name, so no work or home path is stored in this repository. Increment the package version before publishing changed contents.
 
 1. Classes must be partial
 2. Include 

@@ -62,6 +62,34 @@ public static class DependencyAnalyzer
         return dependencies.ToList();
     }
 
+    public static IReadOnlyList<string> GetParameterDependencies(
+        ISymbol canExecuteSymbol, IParameterSymbol parameter)
+    {
+        if (!parameter.Type.AllInterfaces.Any(@interface =>
+            @interface.Name == "INotifyPropertyChanged"
+            && @interface.ContainingNamespace.ToDisplayString() == "System.ComponentModel"))
+        {
+            return [];
+        }
+
+        var syntax = canExecuteSymbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+        if (syntax == null) return [];
+
+        var propertyNames = new HashSet<string>(parameter.Type.GetMembers()
+            .OfType<IPropertySymbol>()
+            .Select(property => property.Name));
+
+        return GetBodyIdentifiers(syntax)
+            .Where(identifier => identifier.Parent is MemberAccessExpressionSyntax memberAccess
+                && memberAccess.Name == identifier
+                && memberAccess.Expression is IdentifierNameSyntax receiver
+                && receiver.Identifier.Text == parameter.Name
+                && propertyNames.Contains(identifier.Identifier.Text))
+            .Select(identifier => identifier.Identifier.Text)
+            .Distinct()
+            .ToArray();
+    }
+
     private static IReadOnlyDictionary<string, string> GetObservableMembers(INamedTypeSymbol containingType)
     {
         var members = containingType.GetMembers()

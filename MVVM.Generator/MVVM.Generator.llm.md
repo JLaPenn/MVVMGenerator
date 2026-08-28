@@ -8,6 +8,15 @@ Add the `MVVM.Generator` NuGet package. Use `using MVVM.Generator.Attributes;` i
 
 The package supplies the generator/analyzers under `analyzers/dotnet/cs`, the attribute assembly under `lib/netstandard2.0`, and `build`/`buildTransitive` props. Local packages build to `artifacts/packages` by default; set MSBuild `PackageOutputPath` to override that location.
 
+Publishing uses a machine-level NuGet source named `InternalNugetFeed`, allowing each computer to map the same name to a different folder or UNC path:
+
+```powershell
+dotnet nuget add source "<machine-specific-feed-path>" --name "InternalNugetFeed"
+dotnet msbuild MVVM.Generator/MVVM.Generator.csproj -t:PublishInternal
+```
+
+`PublishInternal` packs the current version and pushes it to that named source with `--skip-duplicate`. Package versions must be incremented when package contents change.
+
 ---
 
 ## Attributes
@@ -87,7 +96,7 @@ Generates a nested `ICommand` class and a lazy-initialized command property.
 - A parameterless command may use a parameterless `bool` method or `bool` property for CanExecute
 - Without a supplied CanExecute member, a parameterless command returns `true`; a parameterized command requires a parameter of the declared type
 - Event source and event name arrays must have equal lengths
-- External invalidation events must be static, accessible from the generated partial class, and use a void delegate with two parameters
+- External invalidation events must be static, accessible from the generated partial class, and use a void delegate without `ref` parameters
 
 ```csharp
 public partial class ViewModel
@@ -123,6 +132,8 @@ public void AddItem(Item item) { /* ... */ }
 ```
 
 Inferred dependencies include owner properties and fields carrying `[AutoNotify]`; explicit `InvalidatedBy` entries are merged with them. The generated command subscribes to owner `PropertyChanged` and raises `CanExecuteChanged` only for those property names. This framework-neutral mechanism works in WPF and Avalonia.
+
+Properties read directly from an `INotifyPropertyChanged` command parameter are also inferred. After `CanExecute` receives that object, the command switches subscriptions when a later call receives a different object and raises `CanExecuteChanged` for matching or wildcard property notifications. Standard WPF and Avalonia command sources make that call when their `CommandParameter` reference changes; `ICommand` cannot observe the source-side assignment itself.
 
 Generated external-event subscriptions hold the command weakly and detach after observing that it was collected. For parameter state without an observable configured event, call the generated `NotifyAddItemCommandCanExecuteChanged()` method explicitly.
 
@@ -243,5 +254,6 @@ Absolute paths are used directly. Relative paths are anchored to `MSBuildProject
 6. `DependsOn` can reference either field names or property names
 7. Inheritance is supported — derived classes reuse base `INotifyPropertyChanged` implementation
 8. Static methods generate static commands (no owner reference)
-9. External command invalidation currently supports accessible static two-parameter events
-10. Parameter-object property changes are not inferred; configure an observable event or call the generated command invalidator
+9. External command invalidation supports accessible static void events without `ref` parameters
+10. Direct properties of `INotifyPropertyChanged` command parameters are inferred; deeper object graphs require another observable event or explicit invalidation
+11. Command parameter reference replacement is detected when the command source calls `CanExecute`, not by `ICommand` itself

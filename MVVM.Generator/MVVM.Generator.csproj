@@ -14,7 +14,7 @@
 	</PropertyGroup>
 	<PropertyGroup>
 		<PackageId>MVVM.Generator</PackageId>
-		<Version>4.7.19</Version>
+		<Version>4.7.24</Version>
 		<PackageProjectUrl>https://github.com/PassivePicasso/MVVMGenerator</PackageProjectUrl>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<Title>MVVM.Generator</Title>
@@ -41,4 +41,8 @@
 		<PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
 		<PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.11.0" />
 	</ItemGroup>
+
+	<Target Name="PublishInternal" DependsOnTargets="Pack">
+		<Exec Command="dotnet nuget push &quot;$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg&quot; --source &quot;InternalNugetFeed&quot; --skip-duplicate" />
+	</Target>
 </Project>

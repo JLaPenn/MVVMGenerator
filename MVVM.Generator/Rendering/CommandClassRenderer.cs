@@ -37,6 +37,9 @@ internal static class CommandClassRenderer
 
         if (command.ParameterTypeName is { } parameterType)
         {
+            var parameterTracking = command.ParameterDependencies.IsEmpty
+                ? string.Empty
+                : "                TrackCanExecuteParameter(typedParameter);\n";
             methodCall = $$"""
                 if(parameter is not {{parameterType}} typedParameter) return;
                     {{awaitPrefix}}{{callerSource}}.{{command.MethodName}}(typedParameter);
@@ -46,7 +49,7 @@ internal static class CommandClassRenderer
             canExecute = !string.IsNullOrEmpty(command.CanExecuteName)
                 ? $$"""
                 if(parameter is not {{parameterType}} typedParameter) return false;
-                    return {{callerSource}}.{{command.CanExecuteName}}(typedParameter);
+{{parameterTracking}}                    return {{callerSource}}.{{command.CanExecuteName}}(typedParameter);
 """
                 : $"""
                 return parameter is {parameterType};
@@ -61,6 +64,8 @@ internal static class CommandClassRenderer
             readonly {{command.OwnerTypeName}} _owner;
 
 """;
+
+    var parameterTrackingMembers = ParameterTrackingMembers(command);
 
         string ctorBody;
         string disposeMethod = "";
@@ -97,7 +102,7 @@ internal static class CommandClassRenderer
         var asyncModifier = command.IsAsync ? "async " : "";
 
         // Remove the pragma warning disable if we're actually using the event
-        var usesEvent = hasDependencies || hasEventInvalidations;
+        var usesEvent = hasDependencies || hasEventInvalidations || !command.ParameterDependencies.IsEmpty;
         var pragmaDisable = usesEvent ? "" : "#pragma warning disable CS0067 // Event is never used\n";
         var pragmaRestore = usesEvent ? "" : "#pragma warning restore CS0067\n";
 
@@ -106,6 +111,7 @@ internal static class CommandClassRenderer
         {
             public event EventHandler? CanExecuteChanged;
 {{ownerField}}
+{{parameterTrackingMembers}}
 {{constructor}}
             public bool CanExecute(object? parameter)
             {
@@ -134,11 +140,14 @@ internal static class CommandClassRenderer
         for (var index = 0; index < command.EventInvalidations.Length; index++)
         {
             var invalidation = command.EventInvalidations[index];
+            var lambdaParameters = invalidation.ParameterCount == 0
+                ? "()"
+                : $"({string.Join(", ", Enumerable.Repeat("_", invalidation.ParameterCount))})";
             subscriptions.Add($$"""
 
                 var weakCommand{{index}} = new WeakReference<{{command.ClassName}}>(this);
                 {{invalidation.DelegateTypeName}}? invalidationHandler{{index}} = null;
-                invalidationHandler{{index}} = (_, _) =>
+                invalidationHandler{{index}} = {{lambdaParameters}} =>
                 {
                     if (weakCommand{{index}}.TryGetTarget(out var command))
                         command.NotifyCanExecuteChanged();
@@ -150,6 +159,39 @@ internal static class CommandClassRenderer
         }
 
         return string.Concat(subscriptions);
+    }
+
+    private static string ParameterTrackingMembers(CommandModel command)
+    {
+        if (command.ParameterDependencies.IsEmpty || command.ParameterTypeName == null)
+            return string.Empty;
+
+        var propertyChecks = string.Join(" || ",
+            command.ParameterDependencies.Select(dependency => $"e.PropertyName == \"{dependency}\""));
+
+        return $$"""
+            private System.ComponentModel.INotifyPropertyChanged? _canExecuteParameter;
+
+            private void TrackCanExecuteParameter({{command.ParameterTypeName}} parameter)
+            {
+                if (ReferenceEquals(_canExecuteParameter, parameter)) return;
+
+                if (_canExecuteParameter != null)
+                    _canExecuteParameter.PropertyChanged -= OnCanExecuteParameterPropertyChanged;
+
+                _canExecuteParameter = parameter as System.ComponentModel.INotifyPropertyChanged;
+
+                if (_canExecuteParameter != null)
+                    _canExecuteParameter.PropertyChanged += OnCanExecuteParameterPropertyChanged;
+            }
+
+            private void OnCanExecuteParameterPropertyChanged(
+                object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+            {
+                if (string.IsNullOrEmpty(e.PropertyName) || {{propertyChecks}})
+                    NotifyCanExecuteChanged();
+            }
+""";
     }
 
     private static string PropertyChangedHandler(EquatableArray<string> dependencies)

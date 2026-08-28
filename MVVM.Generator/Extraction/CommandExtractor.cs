@@ -41,6 +41,9 @@ internal static class CommandExtractor
             .Distinct()
             .ToArray();
         var eventInvalidations = ResolveEventInvalidations(attribute);
+        var parameterDependencies = canExecuteMember is IMethodSymbol { Parameters.Length: 1 } canExecuteMethod
+            ? DependencyAnalyzer.GetParameterDependencies(canExecuteMethod, canExecuteMethod.Parameters[0])
+            : (IReadOnlyList<string>)[];
 
         if (dependencies.Count > 0)
             usings.Add("using System.ComponentModel;");
@@ -63,6 +66,7 @@ internal static class CommandExtractor
             CanExecuteName: canExecuteName,
             CanExecuteIsProperty: isProperty,
             Dependencies: EquatableArray.From(dependencies),
+            ParameterDependencies: EquatableArray.From(parameterDependencies),
             EventInvalidations: EquatableArray.From(eventInvalidations),
             AdditionalAttributes: EquatableArray.From(additionalAttributes),
             Usings: EquatableArray.From(usings));
@@ -237,7 +241,8 @@ internal static class CommandExtractor
             invalidations.Add(new CommandEventInvalidation(
                 sourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 eventSymbol.Name,
-                delegateType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+                delegateType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                delegateType.DelegateInvokeMethod!.Parameters.Length));
         }
 
         return invalidations;
@@ -269,9 +274,10 @@ internal static class CommandExtractor
                     $"'{sourceType.Name}.{eventNames[index]}' must be an accessible static event.");
 
             var invoke = (eventSymbol.Type as INamedTypeSymbol)?.DelegateInvokeMethod;
-            if (invoke == null || !invoke.ReturnsVoid || invoke.Parameters.Length != 2)
+            if (invoke == null || !invoke.ReturnsVoid
+                || invoke.Parameters.Any(parameter => parameter.RefKind != RefKind.None))
                 return AddInvalidationDiagnostic(methodSymbol, diagnostics,
-                    $"'{sourceType.Name}.{eventNames[index]}' must use a void delegate with two parameters.");
+                    $"'{sourceType.Name}.{eventNames[index]}' must use a void delegate without ref parameters.");
         }
 
         return true;
