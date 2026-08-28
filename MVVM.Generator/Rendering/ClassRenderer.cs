@@ -17,7 +17,7 @@ internal static class ClassRenderer
 {
     private static readonly CodeRenderer Renderer = new();
 
-    public static string? Render(ClassModel model)
+    public static string? Render(ClassModel model, bool targetsWpf)
     {
         if (!model.HasContent) return null;
 
@@ -45,7 +45,7 @@ internal static class ClassRenderer
             usings.AddRange(command.Usings);
             if (command.IsOverrideOfCommand) continue;
 
-            CommandClassRenderer.AddCommandClass(nestedClasses, command);
+            CommandClassRenderer.AddCommandClass(nestedClasses, command, targetsWpf);
 
             fields.Add($$"""
 
