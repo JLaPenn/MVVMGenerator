@@ -17,7 +17,7 @@ internal static class ClassRenderer
 {
     private static readonly CodeRenderer Renderer = new();
 
-    public static string? Render(ClassModel model, bool targetsWpf)
+    public static string? Render(ClassModel model, bool targetsWpf, string observerTypeName)
     {
         if (!model.HasContent) return null;
 
@@ -31,7 +31,17 @@ internal static class ClassRenderer
         foreach (var field in model.NotifyFields)
         {
             usings.AddRange(field.Usings);
-            NotifyPropertyRenderer.AddProperties(properties, field);
+            NotifyPropertyRenderer.AddProperties(
+                properties, field, ChainsHeadedBy(model, field.PropertyName), observerTypeName);
+        }
+
+        if (!model.Chains.IsEmpty)
+        {
+            usings.Add(ObserverNaming.RenderUsing(observerTypeName));
+            foreach (var chain in model.Chains)
+            {
+                usings.AddRange(chain.Usings);
+            }
         }
 
         if (!model.NotifyFields.IsEmpty && !model.BaseImplementsInpc)
@@ -92,6 +102,20 @@ internal static class ClassRenderer
                     }
                 }
                 """;
+    }
+
+    /// <summary>
+    /// The chains rooted at one [AutoNotify] property, which that property's
+    /// setter is responsible for attaching.
+    /// </summary>
+    private static List<ChainModel> ChainsHeadedBy(ClassModel model, string propertyName)
+    {
+        var chains = new List<ChainModel>();
+        foreach (var chain in model.Chains)
+        {
+            if (chain.HeadPropertyName == propertyName) chains.Add(chain);
+        }
+        return chains;
     }
 
     private const string InpcImplementation = """
