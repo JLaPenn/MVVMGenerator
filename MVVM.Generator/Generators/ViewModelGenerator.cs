@@ -11,6 +11,7 @@ using MVVM.Generator.Attributes;
 using MVVM.Generator.Extraction;
 using MVVM.Generator.Models;
 using MVVM.Generator.Rendering;
+using MVVM.Generator.Runtime;
 using MVVM.Generator.Utilities;
 
 namespace MVVM.Generator.Generators;
@@ -30,6 +31,13 @@ public sealed class ViewModelGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
+        // Emitted unconditionally so the chain plumbing a property setter renders
+        // is always present, without the output stage depending on any model.
+        context.RegisterPostInitializationOutput(static postInit =>
+            postInit.AddSource(
+                ChainObserverSource.HintName,
+                SourceText.From(ChainObserverSource.Source, Encoding.UTF8)));
+
         // Projected to a string first: AnalyzerConfigOptionsProvider itself has
         // no value equality and combining it directly would invalidate every
         // model on each compilation.
@@ -41,6 +49,16 @@ public sealed class ViewModelGenerator : IIncrementalGenerator
         var targetsWpf = context.CompilationProvider
             .Select(static (compilation, _) =>
                 compilation.GetTypeByMetadataName("System.Windows.Input.CommandManager") is not null);
+
+        // Also projected to a value: generated code refers to the chain observer by
+        // an unqualified name, which has to dodge any same-named type in the
+        // compilation.
+        var observerTypeName = context.CompilationProvider
+            .Select(static (compilation, _) => ObserverNaming.Resolve(compilation));
+
+        var renderOptions = targetsWpf
+            .Combine(observerTypeName)
+            .Select(static (pair, _) => new RenderOptions(pair.Left, pair.Right));
 
         // Extraction runs once per class, then SelectMany hands each model
         // downstream on its own so an unchanged class skips its output step.
@@ -54,9 +72,15 @@ public sealed class ViewModelGenerator : IIncrementalGenerator
             .SelectMany(static (extracted, _) => extracted);
 
         context.RegisterSourceOutput(
-            models.Combine(targetsWpf),
+            models.Combine(renderOptions),
             static (spc, pair) => Emit(spc, pair.Left, pair.Right));
     }
+
+    /// <summary>
+    /// Compilation-wide choices the output stage needs, as a value so combining
+    /// them does not defeat incremental caching.
+    /// </summary>
+    private sealed record RenderOptions(bool TargetsWpf, string ObserverTypeName);
 
     private static IncrementalValueProvider<ImmutableArray<INamedTypeSymbol>> CollectAttributedClasses(
         IncrementalGeneratorInitializationContext context)
@@ -117,14 +141,14 @@ public sealed class ViewModelGenerator : IIncrementalGenerator
             .ToImmutableArray();
     }
 
-    private static void Emit(SourceProductionContext context, ClassModel model, bool targetsWpf)
+    private static void Emit(SourceProductionContext context, ClassModel model, RenderOptions options)
     {
         foreach (var diagnostic in model.Diagnostics)
         {
             context.ReportDiagnostic(diagnostic.ToDiagnostic());
         }
 
-        var generatedCode = ClassRenderer.Render(model, targetsWpf);
+        var generatedCode = ClassRenderer.Render(model, options.TargetsWpf, options.ObserverTypeName);
         if (generatedCode == null) return;
 
         context.AddSource(model.HintName, SourceText.From(generatedCode, Encoding.UTF8));

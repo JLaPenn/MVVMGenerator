@@ -14,6 +14,7 @@ internal sealed record ClassModel(
     EquatableArray<CommandModel> Commands,
     EquatableArray<BackingPropertyModel> DependencyProperties,
     EquatableArray<BackingPropertyModel> StyledProperties,
+    EquatableArray<ChainModel> Chains,
     EquatableArray<DiagnosticInfo> Diagnostics)
 {
     public bool HasContent =>

@@ -6,3 +6,5 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 MAACA005 | Usage | Warning | AutoCommandAnalyzer
+MGAN101 | Generator | Disabled | AutoNotify
+MGAN102 | Generator | Warning | AutoNotify

@@ -33,6 +33,30 @@ public static class Descriptors
                 category: Category,
                 defaultSeverity: DiagnosticSeverity.Error,
                 isEnabledByDefault: true);
+
+            public static readonly DiagnosticDescriptor DependencyNotNotifying = new(
+                id: "MGAN102",
+                title: "Dependency is not an AutoNotify property",
+                messageFormat: "'{0}' depends on '{1}', which exists but is not an [AutoNotify] property, so no notification is generated for it",
+                category: Category,
+                defaultSeverity: DiagnosticSeverity.Warning,
+                isEnabledByDefault: true,
+                description: "[DependsOn] works by raising PropertyChanged from the generated setter of the property it "
+                    + "names. A hand-written or inherited property has no generated setter, so the attribute has no "
+                    + "effect and the dependent property must be notified explicitly.");
+
+            public static readonly DiagnosticDescriptor UnobservableDependency = new(
+                id: "MGAN101",
+                title: "Computed property reads state that cannot be observed",
+                messageFormat: "Property '{0}' reads '{1}', which will not raise PropertyChanged: {2}",
+                category: Category,
+                defaultSeverity: DiagnosticSeverity.Warning,
+                isEnabledByDefault: false,
+                description: "The generator observes property paths whose every link implements INotifyPropertyChanged. "
+                    + "A path through a plain object, a static member, an indexer or a method result cannot be watched, "
+                    + "so the computed property keeps its stale value until something else raises PropertyChanged. "
+                    + "Disabled by default because a getter may legitimately read immutable state; enable it to audit a "
+                    + "codebase migrated from a framework that wove notifications automatically.");
         }
         public static class AutoCommand
         {

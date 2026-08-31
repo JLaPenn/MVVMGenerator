@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 using MVVM.Generator.Models;
 
@@ -13,7 +14,11 @@ internal static class NotifyPropertyRenderer
 {
     private const string INCCName = "INotifyCollectionChanged";
 
-    public static void AddProperties(List<string> properties, NotifyFieldModel field)
+    public static void AddProperties(
+        List<string> properties,
+        NotifyFieldModel field,
+        IReadOnlyList<ChainModel> chains,
+        string observerTypeName)
     {
         var fieldName = field.FieldName;
         var defines = string.Empty;
@@ -76,10 +81,40 @@ internal static class NotifyPropertyRenderer
 """;
         }
 
-        // Combine handler suffixes: collection changed subscription first, then property changed invocation
-        var suffix = collectionChangedSuffix + propertyChangedSuffix;
+        var chainSuffix = string.Empty;
+        foreach (var chain in chains)
+        {
+            defines += $$"""
 
-        var dependsSuffix = field.DependentProperties.Aggregate(
+        private {{observerTypeName}}? {{chain.ObserverFieldName}};
+""";
+
+            // Attach releases the previous subscriptions itself, so reassigning the
+            // head does not need a paired detach here.
+            chainSuffix += $$"""
+
+                {{chain.ObserverFieldName}} ??= new {{observerTypeName}}(
+{{RenderChainCallback(chain)}}
+{{RenderChainLinks(chain, observerTypeName)}});
+                {{chain.ObserverFieldName}}.Attach({{fieldName}});
+""";
+        }
+
+        // Combine handler suffixes: collection changed subscription first, then property changed invocation
+        var suffix = collectionChangedSuffix + chainSuffix + propertyChangedSuffix;
+
+        var notified = new List<string>(field.DependentProperties);
+        foreach (var chain in chains)
+        {
+            // The head changing invalidates everything reading through it, and the
+            // observer only fires for changes below the head.
+            foreach (var dependent in chain.DependentProperties)
+            {
+                if (!notified.Contains(dependent)) notified.Add(dependent);
+            }
+        }
+
+        var dependsSuffix = notified.Aggregate(
             string.Empty,
             (current, p) => current + $"\n                OnPropertyChanged(nameof({p}));");
 
@@ -102,5 +137,39 @@ internal static class NotifyPropertyRenderer
 """;
 
         properties.Add(item);
+    }
+
+    /// <summary>
+    /// Renders the observer's callback argument, including its trailing comma. A
+    /// lone dependent gets an expression-bodied lambda; only several need a block.
+    /// </summary>
+    private static string RenderChainCallback(ChainModel chain)
+    {
+        var dependents = chain.DependentProperties.ToList();
+
+        if (dependents.Count == 1)
+            return $"                    () => OnPropertyChanged(nameof({dependents[0]})),";
+
+        var builder = new StringBuilder();
+        builder.Append("                    () =>\n");
+        builder.Append("                    {\n");
+        foreach (var dependent in dependents)
+        {
+            builder.Append($"                        OnPropertyChanged(nameof({dependent}));\n");
+        }
+        builder.Append("                    },");
+
+        return builder.ToString();
+    }
+
+    private static string RenderChainLinks(ChainModel chain, string observerTypeName)
+    {
+        return string.Join(
+            ",\n",
+            chain.Links.Select(link =>
+                $"                    new {observerTypeName}.Link("
+                + $"\"{link.PropertyName}\", "
+                + $"o => (({link.OwnerTypeName})o).{link.PropertyName}, "
+                + $"{(link.ObserveCollection ? "true" : "false")})"));
     }
 }

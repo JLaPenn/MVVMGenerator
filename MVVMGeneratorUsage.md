@@ -85,6 +85,55 @@ public partial class ViewModel
 }
 ```
 
+### Chained Dependencies
+
+A computed property that reads through another object is wired up automatically —
+no attribute is needed, and `[DependsOn]` cannot express a path.
+
+```csharp
+public partial class EditorViewModel
+{
+    [AutoNotify] private bool isEnabled = true;
+    [AutoNotify] private Document document;
+
+    // Observed automatically: isEnabled, Document.IsReadOnly,
+    // Document.Sections (contents) and Document.Title.
+    public bool CanEdit =>
+        isEnabled
+        && !Document.IsReadOnly
+        && (Document.Sections.Count > 0 || !string.IsNullOrEmpty(Document.Title));
+}
+```
+
+Every link is re-subscribed when it is replaced, so swapping `Document` for a new
+instance, or assigning a new collection to `Sections`, moves the subscriptions and
+releases the old ones. Reads off an observable collection —
+`Count`, an indexer, a LINQ call — are watched through `CollectionChanged`, which
+covers collection types that do not raise `PropertyChanged` for `Count`.
+
+Requirements and limits:
+
+- The path must start at an `[AutoNotify]` property of the same class. That
+  property's generated setter is where the subscription is (re)attached, so a
+  path rooted in a hand-written property or a base-class property is not observed.
+- Every intermediate link must implement `INotifyPropertyChanged` — a class using
+  `[AutoNotify]` counts, even though the generator has not added the interface yet.
+- Paths through indexers, casts, method arguments or static members are not
+  modelled. Enable `MGAN101` to have the generator report the reads it could not
+  observe, which is the practical way to audit a codebase migrated from a
+  framework that wove notifications automatically.
+
+The generated code imports `MVVM.Generator.Runtime` and writes `ChainObserver`
+unqualified. If your own code declares a type called `ChainObserver`, the
+generator detects it and emits an alias instead — `MGChainObserver`, then
+`MGChainObserver2` and upwards — so the unqualified form is only used when it is
+unambiguous. Only types declared in the compilation's own source are checked, which
+is what detection needs to cover: C# resolves a type in the enclosing namespace
+ahead of any using directive, alias included, so an undetected same-named type
+would win. A type arriving from a referenced assembly is not detected, but the
+generated code uses `ChainObserver.Link` and a specific constructor, so an
+impostor of that name fails to compile rather than binding silently.
+
 ## Commands
 
 ### Basic Commands
