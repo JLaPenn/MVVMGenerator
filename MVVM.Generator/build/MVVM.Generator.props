@@ -9,4 +9,9 @@
     <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(UsingMicrosoftNETSdk)' != 'true'">
+    <Analyzer Include="$(MSBuildThisFileDirectory)..\analyzers\dotnet\cs\MVVM.Generator.dll"
+              Condition="Exists('$(MSBuildThisFileDirectory)..\analyzers\dotnet\cs\MVVM.Generator.dll')" />
+  </ItemGroup>
+
 </Project>

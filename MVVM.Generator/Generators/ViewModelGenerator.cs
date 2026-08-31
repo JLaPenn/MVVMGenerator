@@ -36,6 +36,12 @@ public sealed class ViewModelGenerator : IIncrementalGenerator
         var logPath = context.AnalyzerConfigOptionsProvider
             .Select(static (provider, _) => LogConfiguration.Resolve(provider));
 
+        // Projected to a bool so downstream models keep value equality: WPF's
+        // CommandManager lives in PresentationCore and is absent on Avalonia.
+        var targetsWpf = context.CompilationProvider
+            .Select(static (compilation, _) =>
+                compilation.GetTypeByMetadataName("System.Windows.Input.CommandManager") is not null);
+
         // Extraction runs once per class, then SelectMany hands each model
         // downstream on its own so an unchanged class skips its output step.
         var models = CollectAttributedClasses(context)
@@ -47,7 +53,9 @@ public sealed class ViewModelGenerator : IIncrementalGenerator
             })
             .SelectMany(static (extracted, _) => extracted);
 
-        context.RegisterSourceOutput(models, static (spc, model) => Emit(spc, model));
+        context.RegisterSourceOutput(
+            models.Combine(targetsWpf),
+            static (spc, pair) => Emit(spc, pair.Left, pair.Right));
     }
 
     private static IncrementalValueProvider<ImmutableArray<INamedTypeSymbol>> CollectAttributedClasses(
@@ -109,14 +117,14 @@ public sealed class ViewModelGenerator : IIncrementalGenerator
             .ToImmutableArray();
     }
 
-    private static void Emit(SourceProductionContext context, ClassModel model)
+    private static void Emit(SourceProductionContext context, ClassModel model, bool targetsWpf)
     {
         foreach (var diagnostic in model.Diagnostics)
         {
             context.ReportDiagnostic(diagnostic.ToDiagnostic());
         }
 
-        var generatedCode = ClassRenderer.Render(model);
+        var generatedCode = ClassRenderer.Render(model, targetsWpf);
         if (generatedCode == null) return;
 
         context.AddSource(model.HintName, SourceText.From(generatedCode, Encoding.UTF8));
