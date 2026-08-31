@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 using MVVM.Generator.Models;
 
@@ -93,10 +94,7 @@ internal static class NotifyPropertyRenderer
             chainSuffix += $$"""
 
                 {{chain.ObserverFieldName}} ??= new {{observerTypeName}}(
-                    () =>
-                    {
-{{RenderChainCallbackBody(chain)}}
-                    },
+{{RenderChainCallback(chain)}}
 {{RenderChainLinks(chain, observerTypeName)}});
                 {{chain.ObserverFieldName}}.Attach({{fieldName}});
 """;
@@ -141,12 +139,27 @@ internal static class NotifyPropertyRenderer
         properties.Add(item);
     }
 
-    private static string RenderChainCallbackBody(ChainModel chain)
+    /// <summary>
+    /// Renders the observer's callback argument, including its trailing comma. A
+    /// lone dependent gets an expression-bodied lambda; only several need a block.
+    /// </summary>
+    private static string RenderChainCallback(ChainModel chain)
     {
-        return string.Join(
-            "\n",
-            chain.DependentProperties.Select(dependent =>
-                $"                        OnPropertyChanged(nameof({dependent}));"));
+        var dependents = chain.DependentProperties.ToList();
+
+        if (dependents.Count == 1)
+            return $"                    () => OnPropertyChanged(nameof({dependents[0]})),";
+
+        var builder = new StringBuilder();
+        builder.Append("                    () =>\n");
+        builder.Append("                    {\n");
+        foreach (var dependent in dependents)
+        {
+            builder.Append($"                        OnPropertyChanged(nameof({dependent}));\n");
+        }
+        builder.Append("                    },");
+
+        return builder.ToString();
     }
 
     private static string RenderChainLinks(ChainModel chain, string observerTypeName)
